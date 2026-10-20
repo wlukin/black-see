@@ -1,4 +1,7 @@
 node_modules/
+# build output deployed to Cloudflare, and wrangler state
+dist/
+.wrangler/
 # local screenshot captures written by server.mjs (/__shot) and test shots
 shots/
 # local tooling

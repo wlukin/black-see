@@ -16,6 +16,11 @@
   #panel label { display: grid; grid-template-columns: 1fr 110px 40px; gap: 6px; align-items: center; margin: 3px 0; }
   #panel input { width: 110px; accent-color: #e2a04e; }
   #panel output { text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
+  #status { white-space: pre; margin-top: 6px; }
+  #xhair { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; border: 1.5px solid #ffd9a0c0;
+           border-radius: 50%; pointer-events: none; display: none; }
+  body.drone #xhair { display: block; }
+  #flash { position: fixed; inset: 0; background: #fff6e0; opacity: 0; pointer-events: none; }
   #err { position: fixed; inset: 0; display: none; padding: 40px; color: #f88; font: 16px system-ui; white-space: pre-wrap; background: #000; }
 </style>
 </head>
@@ -23,8 +28,11 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <div id="fps">starting…</div>
-  <div class="help">click: mouse look · WASD move · Space/E up · Q/C down · Shift fast · wheel speed · H panel</div>
+  <div class="help">click: mouse look · WASD move · Space/E up · Q/C down · Shift fast · wheel speed · H panel · F drone</div>
+  <div id="status"></div>
 </div>
+<div id="xhair"></div>
+<div id="flash"></div>
 <div id="panel" class="hidden"></div>
 <div id="err"></div>
 <script type="module" src="js/main.js"></script>

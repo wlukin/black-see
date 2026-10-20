@@ -7,6 +7,7 @@ import { SIM_INIT, SIM_EVOLVE, FFT_ROWS, FFT_COLS, SIM_MIPS, FOAM_TEX, RGBA8_MIP
 import { TRANS_LUT, MS_LUT, SKYVIEW_LUT, ENV_CUBE, CUBE_MIPS, SUN_VIS } from './wgsl/sky.js';
 import { OCEAN, SKY_BG, HEIGHT_PROBE } from './wgsl/ocean.js';
 import { BLOOM_DOWN, BLOOM_UP, COMPOSITE } from './wgsl/post.js';
+import { SHIPS, FIRES, FIRE_PARTICLES, HITS_TO_SINK, tankerMesh, createFleet } from './wgsl/ships.js';
 
 const qs = new URLSearchParams(location.search);
 const DBG = Number(qs.get('dbg')) || 0;
@@ -292,6 +293,47 @@ async function main() {
     fullArr(foamW[i]), { buffer: sunVisBuf }], 'ocean' + i));
   const bgSky = bg(skyPipe, [{ buffer: frameUBO }, transView, skyView, sampClamp], 'sky');
 
+  // Tankers: one shared mesh, instanced; drone hits set them on fire and sink them.
+  const [shipMod, fireMod] = await Promise.all([shader(SHIPS, 'ships'), shader(FIRES, 'fires')]);
+  const shipPipe = await device.createRenderPipelineAsync({
+    label: 'ships', layout: 'auto',
+    vertex: {
+      module: shipMod, entryPoint: 'vs',
+      buffers: [{ arrayStride: 40, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' },
+        { shaderLocation: 1, offset: 12, format: 'float32x3' }, { shaderLocation: 2, offset: 24, format: 'float32x4' }] }],
+    },
+    fragment: { module: shipMod, entryPoint: 'fs', targets: [{ format: HDR }] },
+    primitive: { topology: 'triangle-list', cullMode: 'none' },
+    depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
+    multisample: { count: MSAA },
+  });
+  const premul = { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' };
+  const firePipe = await device.createRenderPipelineAsync({
+    label: 'fires', layout: 'auto',
+    vertex: { module: fireMod, entryPoint: 'vs' },
+    fragment: { module: fireMod, entryPoint: 'fs', targets: [{ format: HDR, blend: { color: premul, alpha: premul } }] },
+    primitive: { topology: 'triangle-list' },
+    depthStencil: { format: 'depth32float', depthWriteEnabled: false, depthCompare: 'greater' },
+    multisample: { count: MSAA },
+  });
+  const shipMesh = tankerMesh();
+  const shipVerts = shipMesh.length / 10;
+  const shipVB = mkBuf(shipMesh.byteLength, GU.VERTEX | GU.COPY_DST, 'ship mesh');
+  device.queue.writeBuffer(shipVB, 0, shipMesh);
+  // start x, z (m), heading (deg, 0 = +X), speed (m/s), scale
+  const fleet = createFleet([
+    [-520, -1700, 8, 6.0, 1.0],
+    [900, -3300, 192, 7.0, 0.9],
+    [-2600, -6800, 4, 6.5, 1.15],
+    [-500, 1400, 100, 5.5, 0.9],
+  ]);
+  const shipBuf = mkBuf(fleet.shipData.byteLength, GU.STORAGE | GU.COPY_DST, 'ships');
+  const fireBuf = mkBuf(fleet.fireData.byteLength, GU.STORAGE | GU.COPY_DST, 'fires');
+  const shipBinds = [{ buffer: frameUBO }, transView, skyView, sampClamp, { buffer: shipBuf }, { buffer: fireBuf },
+    fullArr(dispTex), samplerSim, { buffer: sunVisBuf }];
+  const bgShips = bg(shipPipe, [...shipBinds, envCubeView], 'ships');
+  const bgFires = bg(firePipe, shipBinds, 'fires');
+
   // Water height under the camera (async readback, a few frames of latency) so the
   // floating camera rides above passing crests instead of clipping into them.
   const probePipe = await computePipe(HEIGHT_PROBE, 'height probe');
@@ -449,7 +491,12 @@ async function main() {
   }
   if (qs.get('fov')) cam.fovY = Number(qs.get('fov')) * D2R;
   const keys = Object.create(null);
-  addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyH') togglePanel(); });
+  addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code === 'KeyH') togglePanel();
+    if (e.code === 'KeyF' && !e.repeat) drone.on ? recall('recalled') : launch();
+    if (e.code === 'KeyR') { fleet.reset(); setMsg('fleet reset'); }
+  });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
   canvas.addEventListener('click', () => { if (document.pointerLockElement !== canvas) canvas.requestPointerLock(); });
@@ -467,6 +514,37 @@ async function main() {
     cam.speed = Math.max(0.5, Math.min(400, cam.speed * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   }, { passive: true });
 
+  // FPV attack drone: F launches it from the current camera pose; it flies itself forward,
+  // the mouse steers. A strike (or running out of battery) puts the camera back at launch.
+  const DRONE_SPEED = 45, DRONE_BATTERY = 180;
+  const drone = { on: false, t: 0, home: { ...cam } };
+  const flashEl = document.getElementById('flash');
+  let msg = '', msgT = 0;
+  const setMsg = (m) => { msg = m; msgT = 3; };
+  function launch() {
+    Object.assign(drone.home, cam);
+    drone.on = true; drone.t = 0;
+    document.body.classList.add('drone');
+    setMsg('drone launched');
+  }
+  function recall(why) {
+    drone.on = false;
+    cam.x = drone.home.x; cam.y = drone.home.y; cam.z = drone.home.z;
+    cam.yaw = drone.home.yaw; cam.pitch = drone.home.pitch;
+    document.body.classList.remove('drone');
+    setMsg(why);
+  }
+  function updateDrone(dt) {
+    if (!drone.on) return;
+    drone.t += dt;
+    const i = fleet.strike(cam.x, cam.y, cam.z);
+    if (i >= 0) {
+      flashEl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 700, easing: 'ease-out' });
+      const s = fleet.ships[i];
+      recall(`hit on tanker ${i + 1} (${s.hits}/${HITS_TO_SINK})` + (s.sinkT >= 0 ? ' — it is going down' : ''));
+    } else if (drone.t > DRONE_BATTERY) recall('drone battery empty');
+  }
+
   function updateCamera(dt) {
     const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
     let mx = 0, my = 0, mz = 0;
@@ -476,8 +554,9 @@ async function main() {
     mx += fwd * cp * sy + str * cy;
     my += fwd * sp + up;
     mz += -fwd * cp * cy + str * sy;
-    const boost = keys.ShiftLeft || keys.ShiftRight ? 5 : 1;
-    const v = cam.speed * boost * dt;
+    const boost = keys.ShiftLeft || keys.ShiftRight ? (drone.on ? 2 : 5) : 1;
+    if (drone.on) { mx = cp * sy; my = sp; mz = -cp * cy; }
+    const v = (drone.on ? DRONE_SPEED : cam.speed) * boost * dt;
     cam.x += mx * v; cam.y += my * v; cam.z += mz * v;
     cam.y = Math.max(1.0, Math.min(3000, cam.y));
     // keep clear of the actual (displaced) water surface under the camera
@@ -641,6 +720,7 @@ async function main() {
   for (const k of Object.keys(P)) if (qs.has(k)) P[k] = Number(qs.get(k));
 
   const hudFps = document.getElementById('fps');
+  const hudStatus = document.getElementById('status');
 
   // --------------------------------------------------------------------------------------
   // Frame
@@ -717,9 +797,18 @@ async function main() {
       hudFps.textContent = `${fps.toFixed(0)} fps  ${(1000 / fps).toFixed(2)} ms` +
         (hasTS ? `  |  GPU ${gpuMs.toFixed(2)} ms` : '') + `  |  ${nodeCount} nodes  ${W}x${H}`;
       fpsAcc = 0; fpsN = 0; fpsT = 0;
+      let near = Infinity;
+      for (const s of fleet.ships) if (s.depth < 15) near = Math.min(near, Math.hypot(s.x - cam.x, s.z - cam.z));
+      hudStatus.textContent = (drone.on
+        ? `DRONE  ${(DRONE_SPEED * (keys.ShiftLeft || keys.ShiftRight ? 2 : 1)).toFixed(0)} m/s  battery ${(DRONE_BATTERY - drone.t).toFixed(0)} s` +
+          (near < Infinity ? `  nearest tanker ${(near / 1000).toFixed(2)} km` : '') + '  ·  F recall'
+        : 'F launch drone  ·  R reset fleet') + (msgT > 0 ? `\n${msg}` : '') + '\n' +
+        fleet.ships.map((s, i) => `tanker ${i + 1}: ${fleet.state(s)}  ${'■'.repeat(Math.min(s.hits, HITS_TO_SINK))}${'□'.repeat(Math.max(0, HITS_TO_SINK - s.hits))}`).join('\n');
     }
+    msgT -= dt;
     if (fixedDt) dt = fixedDt;
     updateCamera(dt);
+    updateDrone(dt);
     simTime += dt;
     if (simTime > LOOP) simTime -= LOOP;
     frameIndex++;
@@ -731,6 +820,9 @@ async function main() {
     writeFoamUniforms(dt);
     selectAll();
     if (nodeCount) device.queue.writeBuffer(instBuf, 0, instData, 0, nodeCount * 4);
+    fleet.update(dt);
+    device.queue.writeBuffer(shipBuf, 0, fleet.shipData);
+    device.queue.writeBuffer(fireBuf, 0, fleet.fireData);
 
     const enc = device.createCommandEncoder();
     const cp = enc.beginComputePass(computeDesc);
@@ -782,9 +874,18 @@ async function main() {
       rp.setIndexBuffer(idxBuf, 'uint16');
       rp.drawIndexed(GRID * GRID * 6, nodeCount);
     }
+    rp.setPipeline(shipPipe);
+    rp.setBindGroup(0, bgShips);
+    rp.setVertexBuffer(0, shipVB);
+    rp.draw(shipVerts, fleet.ships.length);
     rp.setPipeline(skyPipe);
     rp.setBindGroup(0, bgSky);
     rp.draw(3);
+    if (fleet.fires.length) {
+      rp.setPipeline(firePipe);
+      rp.setBindGroup(0, bgFires);
+      rp.draw(FIRE_PARTICLES * 6, fleet.fires.length);
+    }
     rp.end();
 
     for (let m = 0; m < BLOOM_LEVELS; m++) {

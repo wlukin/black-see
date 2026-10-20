@@ -3,6 +3,7 @@
 //   ocean.html      readable bundle
 //   ocean.min.html  minified bundle (WGSL comments/whitespace stripped; JS minified with
 //                   esbuild when it can be found, otherwise comments/indentation stripped)
+//   dist/index.html the minified bundle again, as the deployable site
 //   node build.mjs
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,7 +12,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const wgslModules = ['js/wgsl/common.js', 'js/wgsl/sim.js', 'js/wgsl/sky.js', 'js/wgsl/ocean.js', 'js/wgsl/post.js'];
+const wgslModules = ['js/wgsl/common.js', 'js/wgsl/sim.js', 'js/wgsl/sky.js', 'js/wgsl/ocean.js', 'js/wgsl/ships.js', 'js/wgsl/post.js'];
 const order = [...wgslModules, 'js/main.js'];
 const stripModuleSyntax = (src) => src
   .replace(/^import[\s\S]*?from\s+['"][^'"]+['"];\s*$/gm, '')                 // drop imports
@@ -81,3 +82,6 @@ const minPage = page
   .replace(/<style>([\s\S]*?)<\/style>/, (_, css) => `<style>${css.replace(/\s+/g, ' ').replace(/ ?([{}:;,>]) ?/g, '$1').trim()}</style>`)
   .replace(/>\s+</g, '><');
 write('ocean.min.html', minPage);
+// dist/ is what gets deployed to Cloudflare (see wrangler.jsonc)
+fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+write('dist/index.html', minPage);

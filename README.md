@@ -12,7 +12,7 @@ A real-time ocean renderer written from scratch on WebGPU, with no engine or ren
 
 You need a recent Chrome with WebGPU and a reasonably capable GPU. On a laptop, force Chrome onto the dedicated GPU in the Windows graphics settings, or it will fall back to the integrated one.
 
-Open `ocean.html` directly in the browser. `ocean.min.html` is the same page minified (61 KB instead of 102 KB). Both are self-contained and work from `file://`.
+Open `ocean.html` directly in the browser. `ocean.min.html` is the same page minified (71 KB instead of 119 KB). Both are self-contained and work from `file://`.
 
 To run from source:
 
@@ -22,6 +22,10 @@ npm start        # serves http://localhost:8080/
 ```
 
 After editing anything under `js/`, run `npm run build` to regenerate both bundles. The minified build strips WGSL comments and whitespace and minifies the JavaScript with esbuild.
+
+## Deployment
+
+Every push to `main` builds the page and deploys `dist/` to Cloudflare as a static-assets Worker, served at https://blacksea.pp.ua (see `.github/workflows/deploy.yml` and `wrangler.jsonc`). The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Controls
 
@@ -33,6 +37,8 @@ After editing anything under `js/`, run `npm run build` to regenerate both bundl
 | Space or E / Q or C | Up / down |
 | Shift | 5x speed |
 | Mouse wheel | Change base speed |
+| F | Launch the FPV attack drone from the current view, or recall it |
+| R | Reset the tankers |
 | H | Settings panel: wind, swell, choppiness, turbidity, foam, sun, haze, clouds, exposure, bloom |
 
 The camera keeps itself above the displaced water surface, so waves never pass through it.
@@ -63,6 +69,12 @@ The atmosphere follows Hillaire's approach, with transmittance, multiple-scatter
 
 Cloud noise octaves are filtered by pixel footprint, and silhouettes are anti-aliased analytically: the screen-space derivative of each layer's edge function sets the width of its opacity edge. Cloud transmittance along the sun direction dims the sunlight that reaches the water, and aerial perspective is applied over the sea.
 
+### Tankers
+
+A few oil tankers steam across the scene. They share one procedural low-poly mesh (hull, deck, accommodation block, funnel), drawn instanced. Each frame the vertex shader samples the wave height at the bow, stern, and both sides, low-passed to about 25 m, and from those sets the hull's heave, pitch, and roll, so long swells move the ships while short chop does not.
+
+Press F to launch an FPV attack drone from wherever the camera is. The view becomes the drone's: it flies forward at 45 m/s (90 with Shift) and the mouse steers. Flying into a hull or the accommodation block is a strike. The screen flashes and the view returns to the launch point, so you watch the fireball from there. Each strike leaves a fire with a downwind smoke plume and scorches the paint around it, and the ship loses way. After four strikes the tanker takes on water. Over 80 seconds it settles stern first with the bow rising, its fires drown, and it goes under. The fire, smoke and fireball are camera-facing particles computed procedurally from each fire's age, so nothing is simulated on the GPU.
+
 ### Post-processing
 
 The scene renders in HDR with 4x MSAA. Post-processing adds an 8-level bloom, AgX tone mapping, a slight white balance shift, and dithering.
@@ -77,7 +89,7 @@ The per-frame code reuses preallocated typed arrays and descriptors, so the garb
 
 - Far water is still somewhat darker than the bright horizon sky above it.
 - The water is tuned toward turbid coastal water. The "Water turbidity" slider gives darker, bluer deep water when turned down.
-- The scene is open ocean only. There is no shoreline, surf, or objects in the water.
+- The scene is open ocean only, with no shoreline or surf. The tankers are simple low-poly models: they leave no wake, cast no shadows, and do not show up in the water's reflections. Smoke particles are not depth-sorted and do not fade where they meet the water.
 - Clouds are two flat layers, not volumetric.
 
 ## How it was made
@@ -90,9 +102,10 @@ I built this with Claude Code (Opus 5.5). I asked for the most realistic water i
 |---|---|
 | `index.html` | Page shell, HUD, and settings panel styles |
 | `js/main.js` | Device setup, resources, camera, per-frame loop |
-| `js/wgsl/` | Shaders as JavaScript modules: `sim.js` (waves and foam), `sky.js` (atmosphere and clouds), `ocean.js` (surface and sky pass), `post.js` (bloom and tone mapping), `common.js` (shared structs) |
+| `js/wgsl/` | Shaders as JavaScript modules: `sim.js` (waves and foam), `sky.js` (atmosphere and clouds), `ocean.js` (surface and sky pass), `ships.js` (tankers, drone strikes, fire and smoke), `post.js` (bloom and tone mapping), `common.js` (shared structs) |
 | `server.mjs` | Tiny static server for development |
-| `build.mjs` | Builds `ocean.html` and `ocean.min.html` |
+| `build.mjs` | Builds `ocean.html`, `ocean.min.html` and `dist/index.html` |
+| `wrangler.jsonc`, `.github/workflows/deploy.yml` | Cloudflare deployment |
 | `docs/` | README images |
 
 ## License

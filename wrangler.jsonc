@@ -1,0 +1,12 @@
+// Cloudflare Worker that only serves the static build in dist/ (no Worker script).
+// Deployed by .github/workflows/deploy.yml on every push to main.
+{
+  "name": "black-see",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  // needs the blacksea.pp.ua zone to be active in the same Cloudflare account
+  "routes": [{ "pattern": "blacksea.pp.ua", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist"
+  }
+}

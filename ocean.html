@@ -28,7 +28,7 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <div id="fps">starting…</div>
-  <div class="help">click to steer the drone · Shift boost · F drone / free camera (WASD, Space/E, Q/C, wheel speed) · R reset · H panel</div>
+  <div class="help">click to steer the drone · Shift boost · F drone / free camera (WASD, Space/E, Q/C, wheel speed) · R reset · G quality · H panel</div>
   <div id="status"></div>
 </div>
 <div id="xhair"></div>
@@ -2263,6 +2263,16 @@ async function main() {
   const bloomUBOs = [];
   for (let i = 0; i < BLOOM_LEVELS * 2; i++) bloomUBOs.push(mkBuf(16, GU.UNIFORM | GU.COPY_DST, 'bloom ubo'));
 
+  // Graphics quality (G cycles it; remembered per browser, ?quality=low overrides): render
+  // resolution and how far out the ocean mesh keeps its finest detail.
+  const QUALITY = [
+    { name: 'high', res: 1, lod: 1 },
+    { name: 'medium', res: 0.75, lod: 0.7 },
+    { name: 'low', res: 0.5, lod: 0.5 },
+  ];
+  let quality = 0;
+  try { quality = Math.max(0, QUALITY.findIndex((q) => q.name === (qs.get('quality') || localStorage.getItem('quality')))); } catch { /* storage blocked */ }
+
   let W = 0, H = 0;
   let colorMS, depthMS, hdrTex, bloomTex;
   const mainPass = {
@@ -2277,7 +2287,7 @@ async function main() {
 
   function resize() {
     const fw = Number(qs.get('w')) || 0, fh = Number(qs.get('h')) || 0;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = (window.devicePixelRatio || 1) * QUALITY[quality].res;
     const w = fw || Math.max(1, Math.round(canvas.clientWidth * dpr));
     const h = fh || Math.max(1, Math.round(canvas.clientHeight * dpr));
     if (w === W && h === H) return;
@@ -2379,6 +2389,7 @@ async function main() {
     if (e.code === 'KeyH') togglePanel();
     if (e.code === 'KeyF' && !e.repeat) { if (drone.on) { drone.auto = false; recall('free camera'); } else launch(); }
     if (e.code === 'KeyR') { fleet.reset(); setMsg('fleet reset'); }
+    if (e.code === 'KeyG') { setQuality((quality + 1) % QUALITY.length); setMsg(`graphics quality: ${QUALITY[quality].name}`); }
   });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -2458,7 +2469,15 @@ async function main() {
   // CDLOD node selection (CPU, allocation free)
   // --------------------------------------------------------------------------------------
   const ranges = new Float64Array(LODS);
-  for (let l = 0; l < LODS; l++) ranges[l] = R0 * Math.pow(2, l);
+  let r0 = R0;
+  function setQuality(q) {
+    quality = q;
+    try { localStorage.setItem('quality', QUALITY[q].name); } catch { /* storage blocked */ }
+    r0 = R0 * QUALITY[q].lod;
+    for (let l = 0; l < LODS; l++) ranges[l] = r0 * Math.pow(2, l);
+    resize();
+  }
+  setQuality(quality);
   const planes = new Float64Array(16);
   const HB = 4.0;   // vertical bound of displaced surface
   const XB = 4.0;   // horizontal displacement margin for culling
@@ -2554,7 +2573,7 @@ async function main() {
     f[36] = W; f[37] = H; f[38] = 1 / W; f[39] = 1 / H;
     for (let c = 0; c < C; c++) { f[40 + c] = CASC_L[c]; f[48 + c] = 1 / CASC_L[c]; }
     f[56] = Math.cos(P.windDir * D2R); f[57] = Math.sin(P.windDir * D2R); f[58] = P.windSpeed;
-    f[64] = R0; f[65] = GRID; f[66] = FOAM_LEVEL_SIZE[0]; f[67] = FOAM_LEVEL_SIZE[1];
+    f[64] = r0; f[65] = GRID; f[66] = FOAM_LEVEL_SIZE[0]; f[67] = FOAM_LEVEL_SIZE[1];
     f[68] = P.exposure; f[69] = P.bloom; f[70] = frameIndex; f[71] = DBG;
     f[72] = P.haze; f[73] = Math.max(cam.y, 10) * 0.001; f[74] = P.veil; f[75] = 0.9;
     // deep water body scatter colour (greenish coastal water), unresolved slope variance
@@ -2686,7 +2705,7 @@ async function main() {
     if (fpsT > 0.5) {
       const fps = fpsN / fpsAcc;
       hudFps.textContent = `${fps.toFixed(0)} fps  ${(1000 / fps).toFixed(2)} ms` +
-        (hasTS ? `  |  GPU ${gpuMs.toFixed(2)} ms` : '') + `  |  ${nodeCount} nodes  ${W}x${H}`;
+        (hasTS ? `  |  GPU ${gpuMs.toFixed(2)} ms` : '') + `  |  ${nodeCount} nodes  ${W}x${H}  |  quality ${QUALITY[quality].name} (G)`;
       fpsAcc = 0; fpsN = 0; fpsT = 0;
       let near = Infinity;
       for (const s of fleet.ships) if (s.depth < 15) near = Math.min(near, Math.hypot(s.x - cam.x, s.z - cam.z));

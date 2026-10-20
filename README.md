@@ -39,11 +39,12 @@ Every push to `main` builds the page and deploys `dist/` to Cloudflare as a stat
 | Mouse wheel | Change base speed |
 | F | Switch between the FPV attack drone and the free camera (a new drone launches from the current view) |
 | R | Reset the tankers |
+| G | Graphics quality: high, medium (75% resolution) or low (50% resolution, shorter-range mesh detail). Remembered by the browser |
 | H | Settings panel: wind, swell, choppiness, turbidity, foam, sun, haze, clouds, exposure, bloom |
 
 The camera keeps itself above the displaced water surface, so waves never pass through it.
 
-URL parameters are handy for testing. `?w=2560&h=1440` forces the render resolution, `cam=x,y,z,yawDeg,pitchDeg` sets the camera, `fov=deg` sets the field of view, `ui=0` hides the HUD, and any settings key works too, for example `windSpeed=12&swellHs=2&sunElev=8`.
+URL parameters are handy for testing. `?w=2560&h=1440` forces the render resolution, `cam=x,y,z,yawDeg,pitchDeg` sets the camera, `fov=deg` sets the field of view, `ui=0` hides the HUD, `quality=low|medium|high` sets the graphics quality, and any settings key works too, for example `windSpeed=12&swellHs=2&sunElev=8`.
 
 ## How it works
 

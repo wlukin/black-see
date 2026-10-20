@@ -28,7 +28,7 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <div id="fps">starting…</div>
-  <div class="help">click: mouse look · WASD move · Space/E up · Q/C down · Shift fast · wheel speed · H panel · F drone</div>
+  <div class="help">click to steer the drone · Shift boost · F drone / free camera (WASD, Space/E, Q/C, wheel speed) · R reset · H panel</div>
   <div id="status"></div>
 </div>
 <div id="xhair"></div>
@@ -2376,7 +2376,7 @@ async function main() {
   addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'KeyH') togglePanel();
-    if (e.code === 'KeyF' && !e.repeat) drone.on ? recall('recalled') : launch();
+    if (e.code === 'KeyF' && !e.repeat) { if (drone.on) { drone.auto = false; recall('free camera'); } else launch(); }
     if (e.code === 'KeyR') { fleet.reset(); setMsg('fleet reset'); }
   });
   addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -2396,17 +2396,23 @@ async function main() {
     cam.speed = Math.max(0.5, Math.min(400, cam.speed * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   }, { passive: true });
 
-  // FPV attack drone: F launches it from the current camera pose; it flies itself forward,
-  // the mouse steers. A strike (or running out of battery) puts the camera back at launch.
+  // FPV attack drone: the game starts flying one from the start pose (drone=0, or a screenshot
+  // run without drone=1, starts with the free camera instead). It flies itself forward and the mouse steers.
+  // A strike (or running out of battery) sends a fresh drone from the launch point.
+  // F switches to the free camera, and back to a drone launched from wherever the camera is.
   const DRONE_SPEED = 45, DRONE_BATTERY = 180;
-  const drone = { on: false, t: 0, home: { ...cam } };
+  const drone = { on: false, auto: qs.has('drone') ? qs.get('drone') !== '0' : !qs.has('shot'), t: 0, home: { ...cam } };
   const flashEl = document.getElementById('flash');
   let msg = '', msgT = 0;
   const setMsg = (m) => { msg = m; msgT = 3; };
-  function launch() {
-    Object.assign(drone.home, cam);
+  function fly() {
     drone.on = true; drone.t = 0;
     document.body.classList.add('drone');
+  }
+  function launch() {
+    Object.assign(drone.home, cam);
+    drone.auto = true;
+    fly();
     setMsg('drone launched');
   }
   function recall(why) {
@@ -2415,7 +2421,9 @@ async function main() {
     cam.yaw = drone.home.yaw; cam.pitch = drone.home.pitch;
     document.body.classList.remove('drone');
     setMsg(why);
+    if (drone.auto) fly();
   }
+  if (drone.auto) fly();
   function updateDrone(dt) {
     if (!drone.on) return;
     drone.t += dt;
@@ -2683,7 +2691,7 @@ async function main() {
       for (const s of fleet.ships) if (s.depth < 15) near = Math.min(near, Math.hypot(s.x - cam.x, s.z - cam.z));
       hudStatus.textContent = (drone.on
         ? `DRONE  ${(DRONE_SPEED * (keys.ShiftLeft || keys.ShiftRight ? 2 : 1)).toFixed(0)} m/s  battery ${(DRONE_BATTERY - drone.t).toFixed(0)} s` +
-          (near < Infinity ? `  nearest tanker ${(near / 1000).toFixed(2)} km` : '') + '  ·  F recall'
+          (near < Infinity ? `  nearest tanker ${(near / 1000).toFixed(2)} km` : '') + '  ·  F free camera'
         : 'F launch drone  ·  R reset fleet') + (msgT > 0 ? `\n${msg}` : '') + '\n' +
         fleet.ships.map((s, i) => `tanker ${i + 1}: ${fleet.state(s)}  ${'■'.repeat(Math.min(s.hits, HITS_TO_SINK))}${'□'.repeat(Math.max(0, HITS_TO_SINK - s.hits))}`).join('\n');
     }

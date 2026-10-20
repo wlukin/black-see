@@ -25,7 +25,7 @@ After editing anything under `js/`, run `npm run build` to regenerate both bundl
 
 ## Deployment
 
-Every push to `main` builds the page and deploys `dist/` to Cloudflare as a static-assets Worker, served at https://blacksea.pp.ua (see `.github/workflows/deploy.yml` and `wrangler.jsonc`). The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+Every push to `main` builds the page and deploys `dist/` to Cloudflare as a static-assets Worker, served at `black-see.<subdomain>.workers.dev` and, once its zone is active on Cloudflare, https://blacksea.pp.ua (see `.github/workflows/deploy.yml` and `wrangler.jsonc`). The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Controls
 
@@ -37,7 +37,7 @@ Every push to `main` builds the page and deploys `dist/` to Cloudflare as a stat
 | Space or E / Q or C | Up / down |
 | Shift | 5x speed |
 | Mouse wheel | Change base speed |
-| F | Launch the FPV attack drone from the current view, or recall it |
+| F | Switch between the FPV attack drone and the free camera (a new drone launches from the current view) |
 | R | Reset the tankers |
 | H | Settings panel: wind, swell, choppiness, turbidity, foam, sun, haze, clouds, exposure, bloom |
 
@@ -73,7 +73,7 @@ Cloud noise octaves are filtered by pixel footprint, and silhouettes are anti-al
 
 A few oil tankers steam across the scene. They share one procedural low-poly mesh (hull, deck, accommodation block, funnel), drawn instanced. Each frame the vertex shader samples the wave height at the bow, stern, and both sides, low-passed to about 25 m, and from those sets the hull's heave, pitch, and roll, so long swells move the ships while short chop does not.
 
-Press F to launch an FPV attack drone from wherever the camera is. The view becomes the drone's: it flies forward at 45 m/s (90 with Shift) and the mouse steers. Flying into a hull or the accommodation block is a strike. The screen flashes and the view returns to the launch point, so you watch the fireball from there. Each strike leaves a fire with a downwind smoke plume and scorches the paint around it, and the ship loses way. After four strikes the tanker takes on water. Over 80 seconds it settles stern first with the bow rising, its fires drown, and it goes under. The fire, smoke and fireball are camera-facing particles computed procedurally from each fire's age, so nothing is simulated on the GPU.
+The game starts in an FPV attack drone (`drone=0` in the URL starts with the free camera instead). The drone flies forward at 45 m/s (90 with Shift) and the mouse steers. Flying into a hull or the accommodation block is a strike. The screen flashes and a fresh drone sets off from the launch point, flying back towards the fireball. F switches to the free camera; pressing it again launches a drone from wherever the camera is. Each strike leaves a fire with a downwind smoke plume and scorches the paint around it, and the ship loses way. After four strikes the tanker takes on water. Over 80 seconds it settles stern first with the bow rising, its fires drown, and it goes under. The fire, smoke and fireball are camera-facing particles computed procedurally from each fire's age, so nothing is simulated on the GPU.
 
 ### Post-processing
 

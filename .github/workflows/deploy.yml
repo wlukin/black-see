@@ -1,6 +1,6 @@
 name: Deploy to Cloudflare
 
-# main → production at https://blacksea.pp.ua (and black-see.<subdomain>.workers.dev)
+# main → production at black-see.<subdomain>.workers.dev (and blacksea.pp.ua, see wrangler.jsonc)
 on:
   push:
     branches: [main]

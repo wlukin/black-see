@@ -4,8 +4,9 @@
   "name": "black-see",
   "compatibility_date": "2025-09-01",
   "workers_dev": true,
-  // needs the blacksea.pp.ua zone to be active in the same Cloudflare account
-  "routes": [{ "pattern": "blacksea.pp.ua", "custom_domain": true }],
+  // Add once the blacksea.pp.ua zone is active in this Cloudflare account (wrangler fails
+  // the whole deploy while it is not):
+  //   "routes": [{ "pattern": "blacksea.pp.ua", "custom_domain": true }],
   "assets": {
     "directory": "./dist"
   }

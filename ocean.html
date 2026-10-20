@@ -2366,7 +2366,8 @@ async function main() {
   // --------------------------------------------------------------------------------------
   // Camera & input
   // --------------------------------------------------------------------------------------
-  const cam = { x: 0, y: 2.4, z: 0, yaw: 0, pitch: -5.5 * D2R, fovY: 58 * D2R, speed: 6 };
+  // starts 500 m up, looking down towards the nearest tanker (the drone dives from here)
+  const cam = { x: 0, y: 500, z: 0, yaw: -15 * D2R, pitch: -15 * D2R, fovY: 58 * D2R, speed: 6 };
   if (qs.get('cam')) {
     const v = qs.get('cam').split(',').map(Number);
     cam.x = v[0]; cam.y = v[1]; cam.z = v[2]; cam.yaw = (v[3] || 0) * D2R; cam.pitch = (v[4] || 0) * D2R;
